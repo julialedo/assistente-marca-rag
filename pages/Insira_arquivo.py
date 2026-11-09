@@ -31,17 +31,15 @@ except ImportError:
         from langchain_community.vectorstores import Chroma
         ASTRA_METHOD = "chroma_local"
 
-# --- Configuração da Página ---
 st.set_page_config(
     page_title="Chatbot com Seu Arquivo",
     page_icon="📄",
     layout="wide"
 )
 
-st.title("📄 Chatbot com Seu Arquivo")
+st.title("Chatbot com Seu Arquivo")
 st.write("Faça upload de um arquivo e converse com ele!")
 
-# --- Carregamento das Chaves ---
 try:
     GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
     ASTRA_DB_TOKEN = st.secrets["ASTRA_DB_APPLICATION_TOKEN"]
@@ -51,7 +49,6 @@ except Exception as e:
     st.error(f"Erro nas chaves: {str(e)}")
     st.stop()
 
-# --- Funções Auxiliares ---
 def carregar_documento(arquivo):
     """Carrega o documento baseado no tipo de arquivo"""
     with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(arquivo.name)[1]) as tmp_file:
@@ -78,7 +75,7 @@ def carregar_documento(arquivo):
     finally:
         os.unlink(tmp_file_path)
 
-def configurar_sistema_rag(documentos, nome_arquivo):  # ✅ CORRIGIDO: Adicionado nome_arquivo
+def configurar_sistema_rag(documentos, nome_arquivo):
     """Configura o sistema RAG com os documentos carregados"""
     try:
         # Dividir os documentos em chunks
@@ -88,21 +85,19 @@ def configurar_sistema_rag(documentos, nome_arquivo):  # ✅ CORRIGIDO: Adiciona
         )
         pedacos = text_splitter.split_documents(documentos)
         
-        # Configurar embeddings
         model_name = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
         embeddings = HuggingFaceEmbeddings(
             model_name=model_name, 
             model_kwargs={'device': 'cpu'}
         )
         
-        # Criar vectorstore com nome único
         vectorstore = None
-        collection_name = f"file_chat_{hash(nome_arquivo) % 10000}"  # ✅ Nome único
+        collection_name = f"file_chat_{hash(nome_arquivo) % 10000}"
         
         if ASTRA_METHOD == "modern":
             vectorstore = AstraDBVectorStore(
                 embedding=embeddings,
-                collection_name=collection_name,  # ✅ Nome único
+                collection_name=collection_name,
                 api_endpoint=ASTRA_DB_ENDPOINT,
                 token=ASTRA_DB_TOKEN,
                 namespace=ASTRA_DB_KEYSPACE
@@ -110,7 +105,7 @@ def configurar_sistema_rag(documentos, nome_arquivo):  # ✅ CORRIGIDO: Adiciona
         elif ASTRA_METHOD == "community":
             vectorstore = AstraDB(
                 embedding=embeddings,
-                collection_name=collection_name,  # ✅ Nome único
+                collection_name=collection_name,
                 api_endpoint=ASTRA_DB_ENDPOINT,
                 token=ASTRA_DB_TOKEN
             )
@@ -118,18 +113,16 @@ def configurar_sistema_rag(documentos, nome_arquivo):  # ✅ CORRIGIDO: Adiciona
             vectorstore = Chroma.from_documents(
                 documents=pedacos,
                 embedding=embeddings,
-                persist_directory=f"./chroma_db_{collection_name}"  # ✅ Nome único
+                persist_directory=f"./chroma_db_{collection_name}"
             )
     
-        # Adicionar documentos ao Astra DB
         if ASTRA_METHOD != "chroma_local":
             try:
-                vectorstore.clear()  # Limpar antes de adicionar
+                vectorstore.clear()
             except:
                 pass  # Se não existir, continua
             vectorstore.add_documents(pedacos)
         
-        # Configurar LLM
         llm = ChatGoogleGenerativeAI(
             model="gemini-1.5-flash", 
             temperature=0.3,
@@ -138,13 +131,11 @@ def configurar_sistema_rag(documentos, nome_arquivo):  # ✅ CORRIGIDO: Adiciona
         
         retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
         
-        # Configurar memória
         memory = ConversationBufferMemory(
             memory_key='chat_history',
             return_messages=True
         )
         
-        # Criar cadeia de conversação
         conversation_chain = ConversationalRetrievalChain.from_llm(
             llm=llm,
             retriever=retriever,
@@ -154,11 +145,10 @@ def configurar_sistema_rag(documentos, nome_arquivo):  # ✅ CORRIGIDO: Adiciona
         
         return conversation_chain
         
-    except Exception as e:  # ✅ CORRIGIDO: except faltando
+    except Exception as e:
         st.error(f"Erro ao configurar RAG: {str(e)}")
         return None
 
-# --- Inicialização do Estado ---
 if 'file_qa_chain' not in st.session_state:
     st.session_state.file_qa_chain = None
 
@@ -168,8 +158,7 @@ if 'current_file' not in st.session_state:
 if 'file_messages' not in st.session_state:
     st.session_state.file_messages = []
 
-# --- Interface de Upload ---
-st.sidebar.header("📤 Upload do Arquivo")
+st.sidebar.header("Upload do Arquivo")
 
 arquivo = st.sidebar.file_uploader(
     "Escolha um arquivo",
@@ -177,14 +166,13 @@ arquivo = st.sidebar.file_uploader(
     help="Suporta PDF, TXT, DOCX, PPTX"
 )
 
-# --- Processamento do Arquivo ---
 if arquivo is not None:
     file_changed = (st.session_state.current_file != arquivo.name)
     
     if file_changed or st.session_state.file_qa_chain is None:
         with st.spinner("Processando arquivo..."):
             if file_changed:
-                st.session_state.file_messages = []  # Limpar chat ao trocar arquivo
+                st.session_state.file_messages = []
             
             documentos = carregar_documento(arquivo)
             
@@ -198,8 +186,7 @@ if arquivo is not None:
                         "content": f"Arquivo '{arquivo.name}' carregado! Faça suas perguntas."
                     }]
 
-# --- Interface do Chat ---
-if st.session_state.file_qa_chain and st.session_state.current_file:  # ✅ CORRIGIDO: file_qa_chain em vez de arquivo_carregado
+if st.session_state.file_qa_chain and st.session_state.current_file:
     for message in st.session_state.file_messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
@@ -229,9 +216,8 @@ if st.session_state.file_qa_chain and st.session_state.current_file:  # ✅ CORR
 
 else:
     if not st.session_state.current_file:
-        st.info("👆 Faça upload de um arquivo para começar.")
+        st.info("Faça upload de um arquivo para começar.")
 
-# --- Limpar Estado ---
 def limpar_estado():
     st.session_state.file_qa_chain = None
     st.session_state.current_file = None
@@ -239,6 +225,6 @@ def limpar_estado():
 
 if st.session_state.current_file:
     st.sidebar.divider()
-    if st.sidebar.button("🗑️ Limpar Tudo"):
+    if st.sidebar.button("Limpar Tudo"):
         limpar_estado()
         st.rerun()
